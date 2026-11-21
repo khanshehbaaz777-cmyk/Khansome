@@ -1,0 +1,27 @@
+//@version=6
+indicator("Weekly Futures Stock Screener (ADX)", shorttitle="Weekly ADX Screener", overlay=false)
+
+// Interpret “positive ADX > ADX” as +DI > -DI (bullish directional movement).
+// Values are calculated from weekly candles regardless of the chart timeframe.
+diLength = input.int(14, "DI Length", minval=1)
+adxSmoothing = input.int(14, "ADX Smoothing", minval=1)
+adxMinimum = input.float(25.0, "Minimum ADX", minval=0.0, step=0.5)
+minusDiMaximum = input.float(20.0, "Maximum -DI", minval=0.0, step=0.5)
+
+[plusDI, minusDI, adx] = request.security(
+     syminfo.tickerid,
+     "W",
+     ta.dmi(diLength, adxSmoothing),
+     gaps=barmerge.gaps_off,
+     lookahead=barmerge.lookahead_off)
+
+isMatch = plusDI > minusDI and adx > adxMinimum and minusDI < minusDiMaximum
+
+// Pine Screener can filter the “Weekly ADX Match” plot to 1.
+plot(isMatch ? 1 : 0, title="Weekly ADX Match", style=plot.style_columns, color=isMatch ? color.lime : color.gray)
+plot(plusDI, title="Weekly +DI", color=color.green, display=display.data_window)
+plot(adx, title="Weekly ADX", color=color.blue, display=display.data_window)
+plot(minusDI, title="Weekly -DI", color=color.red, display=display.data_window)
+hline(1, "Match = 1", color=color.new(color.lime, 60))
+
+alertcondition(isMatch, title="Weekly ADX Screener Match", message="{{ticker}} matches the weekly ADX screener: +DI > -DI, ADX > threshold, and -DI < threshold.")
