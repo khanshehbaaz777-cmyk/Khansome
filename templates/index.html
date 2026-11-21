@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1220">
+  <title>Weekly ADX Market Screener</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1220; --panel:#111c2f; --line:#26364d; --muted:#9aabc1; --text:#edf4ff; --green:#21c787; --red:#ff667a; --blue:#79aaff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:radial-gradient(ellipse at top,#142846 0,var(--bg) 48%); color:var(--text); font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; }
+    main { max-width:1100px; margin:0 auto; padding:42px 20px 60px; }
+    header { margin-bottom:28px; }
+    .eyebrow { color:var(--green); text-transform:uppercase; letter-spacing:.14em; font-size:12px; font-weight:700; }
+    h1 { margin:8px 0; font-size:clamp(28px,5vw,42px); line-height:1.15; }
+    .sub, .fine { color:var(--muted); }
+    .panel { background:rgba(17,28,47,.92); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:0 16px 40px #0003; }
+    label { display:block; font-size:13px; font-weight:650; margin-bottom:8px; }
+    textarea { display:block; width:100%; min-height:84px; resize:vertical; border:1px solid #344964; border-radius:9px; background:#0b1423; color:var(--text); padding:12px; font:14px/1.5 ui-monospace,SFMono-Regular,monospace; }
+    .actions { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-top:14px; }
+    button { border:0; border-radius:8px; color:#06140f; background:var(--green); padding:10px 17px; font-weight:750; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:wait; }
+    .toggle { display:flex; gap:8px; align-items:center; color:var(--muted); }
+    .toggle input { accent-color:var(--green); }
+    .rules { display:flex; flex-wrap:wrap; gap:9px; margin:18px 0 0; }
+    .chip { border:1px solid var(--line); border-radius:99px; padding:5px 10px; color:#c6d5e9; font-size:12px; }
+    .status { min-height:24px; color:var(--muted); font-size:13px; margin-top:14px; }
+    .status.error { color:var(--red); }
+    .table-wrap { overflow:auto; margin-top:20px; }
+    table { border-collapse:collapse; width:100%; min-width:720px; text-align:left; }
+    th { color:var(--muted); text-transform:uppercase; font-size:11px; letter-spacing:.08em; }
+    th,td { border-bottom:1px solid var(--line); padding:13px 10px; }
+    tbody tr:hover { background:#ffffff06; }
+    .ticker { font-weight:750; }
+    .number { font-variant-numeric:tabular-nums; }
+    .badge { display:inline-block; border-radius:99px; padding:3px 9px; font-size:12px; font-weight:750; }
+    .match { background:#113d31; color:#5ce8b3; }
+    .no-match { background:#293548; color:#bdc9d9; }
+    .row-error { color:var(--red); font-size:12px; }
+    a { color:var(--blue); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .fine { font-size:12px; margin-top:18px; }
+    @media (max-width:600px) { main { padding:28px 14px; } .panel { padding:15px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Weekly technical scan</div>
+    <h1>ADX Futures Stock Screener</h1>
+    <div class="sub">Find symbols with bullish directional strength using weekly price data.</div>
+  </header>
+  <section class="panel" aria-label="Screener controls">
+    <label for="symbols">Symbols (comma- or space-separated; Yahoo Finance format)</label>
+    <textarea id="symbols" spellcheck="false">{{ default_symbols }}</textarea>
+    <div class="actions">
+      <button id="scan" type="button">Scan now</button>
+      <label class="toggle"><input id="auto" type="checkbox" checked> Auto-refresh every 60 seconds</label>
+    </div>
+    <div class="rules">
+      <span class="chip">Weekly timeframe</span><span class="chip">+DI &gt; -DI</span><span class="chip">ADX &gt; 25</span><span class="chip">-DI &lt; 20</span>
+    </div>
+    <div id="status" class="status" role="status" aria-live="polite">Ready to scan.</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Symbol</th><th>Last close</th><th>+DI</th><th>ADX</th><th>-DI</th><th>Weekly data</th><th>Result</th></tr></thead>
+        <tbody id="results"><tr><td colspan="7" class="sub">Click “Scan now” to load results.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+  <p class="fine">Data is provided by Yahoo Finance through yfinance and may be delayed, unavailable, or subject to provider limits. Refreshing rechecks the current weekly candle; it is not an exchange-grade real-time feed. The in-progress weekly candle can change before the week closes. This tool is informational only, not investment advice.</p>
+</main>
+<script>
+  const symbolsInput = document.getElementById('symbols');
+  const scanButton = document.getElementById('scan');
+  const statusEl = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+  let busy = false;
+
+  function cell(row, text, className) {
+    const td = document.createElement('td');
+    td.textContent = text;
+    if (className) td.className = className;
+    row.appendChild(td);
+    return td;
+  }
+
+  function renderRows(items) {
+    resultsEl.replaceChildren();
+    const sorted = [...items].sort((a, b) => Number(Boolean(b.match)) - Number(Boolean(a.match)) || a.symbol.localeCompare(b.symbol));
+    for (const item of sorted) {
+      const tr = document.createElement('tr');
+      const tickerCell = cell(tr, item.symbol || '—', 'ticker');
+      if (item.symbol) {
+        const link = document.createElement('a');
+        link.href = `https://finance.yahoo.com/quote/${encodeURIComponent(item.symbol)}`;
+        link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = item.symbol;
+        tickerCell.replaceChildren(link);
+      }
+      if (item.error) {
+        cell(tr, '—', 'number'); cell(tr, '—', 'number'); cell(tr, '—', 'number'); cell(tr, '—', 'number');
+        cell(tr, item.error, 'row-error'); cell(tr, 'Unavailable', 'row-error');
+      } else {
+        cell(tr, Number(item.close).toLocaleString(undefined, {maximumFractionDigits:2}), 'number');
+        cell(tr, Number(item.plus_di).toFixed(2), 'number');
+        cell(tr, Number(item.adx).toFixed(2), 'number');
+        cell(tr, Number(item.minus_di).toFixed(2), 'number');
+        cell(tr, item.week_ending, 'number');
+        const badge = document.createElement('span');
+        badge.className = `badge ${item.match ? 'match' : 'no-match'}`;
+        badge.textContent = item.match ? 'MATCH' : 'NO MATCH';
+        const td = document.createElement('td'); td.appendChild(badge); tr.appendChild(td);
+      }
+      resultsEl.appendChild(tr);
+    }
+  }
+
+  async function scan() {
+    if (busy) return;
+    const symbols = symbolsInput.value.trim();
+    if (!symbols) { statusEl.textContent = 'Enter one or more symbols.'; statusEl.className = 'status error'; return; }
+    busy = true; scanButton.disabled = true; statusEl.className = 'status'; statusEl.textContent = 'Fetching weekly data and calculating ADX…';
+    try {
+      const response = await fetch(`/api/scan?symbols=${encodeURIComponent(symbols)}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Scan request failed.');
+      renderRows(payload.results);
+      const matches = payload.results.filter(item => item.match).length;
+      statusEl.textContent = `${matches} match${matches === 1 ? '' : 'es'} out of ${payload.results.length} symbols · checked ${new Date(payload.scanned_at).toLocaleTimeString()} · data cache ${payload.cache_seconds}s`;
+    } catch (error) {
+      statusEl.textContent = error.message || 'Unable to scan right now.';
+      statusEl.className = 'status error';
+    } finally { busy = false; scanButton.disabled = false; }
+  }
+
+  scanButton.addEventListener('click', scan);
+  let timer;
+  function updateAutoRefresh() {
+    clearInterval(timer);
+    if (document.getElementById('auto').checked) timer = setInterval(scan, 60000);
+  }
+  document.getElementById('auto').addEventListener('change', updateAutoRefresh);
+  updateAutoRefresh();
+  scan();
+</script>
+</body>
+</html>

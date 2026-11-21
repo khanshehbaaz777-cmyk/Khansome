@@ -1,23 +1,42 @@
-# Weekly Futures Stock Screener (ADX)
+# Weekly ADX Market Screener
 
-A TradingView Pine Script indicator to screen symbols using weekly directional movement and ADX. It evaluates weekly data even when applied to a chart on another timeframe.
+A small web application that scans a watchlist of stock symbols using weekly Directional Movement Index (DMI) and ADX. It preserves the original TradingView Pine indicator and adds a browser-based screener.
 
 ## Screening rules
 
-A symbol matches when all three conditions are true:
+A symbol matches when all conditions are true on weekly candles:
 
-- Weekly **+DI > -DI** (interpreting “positive ADX > ADX” as positive directional indicator above negative directional indicator).
-- Weekly **ADX > 25**.
-- Weekly **-DI < 20**.
+- **+DI > -DI** (bullish directional movement; interpreting “positive ADX > ADX” as +DI > -DI).
+- **ADX > 25**.
+- **-DI < 20**.
 
-DI length and ADX smoothing default to 14 and can be changed in the indicator settings. The threshold values are configurable too.
+The server calculates DMI/ADX with Wilder smoothing over 14 periods, matching the common default settings. The current, still-forming weekly candle is included, so a signal can change until the week closes.
 
-## Use in TradingView
+## Run locally
 
-1. Open `weekly_futures_screener.pine` and copy it into the Pine Editor in TradingView.
-2. Add the indicator to a chart and save it.
-3. Open **Pine Screener**, select a watchlist containing the stocks or futures-related symbols you want to scan, and select this indicator.
-4. Filter the **Weekly ADX Match** plot to `1` to see matches. The diagnostic +DI, ADX, and -DI values are available in the Data Window.
-5. Optionally create an alert using **Weekly ADX Screener Match**.
+Requires Python 3.10 or later.
 
-The script evaluates whichever symbols you include in your TradingView watchlist; it does not fetch or maintain a market-wide ticker universe. Weekly signals can change while the current weekly candle is still forming. This is a technical screening aid, not investment advice.
+```bash
+python -m venv .venv
+# macOS/Linux
+source .venv/bin/activate
+# Windows PowerShell: .venv\\Scripts\\Activate.ps1
+pip install -r requirements.txt
+python app.py
+```
+
+Open <http://127.0.0.1:5000>. Edit the symbol list in the page using Yahoo Finance ticker format. The starter list is a set of NSE symbols (`.NS`); examples for other markets include `AAPL`, `MSFT`, and `TSLA`. Up to 100 symbols can be scanned per request.
+
+## Deploy
+
+This is a Flask web service. A host that supports Python web apps can deploy the repository using the included `Procfile` (`gunicorn app:app`) and install dependencies from `requirements.txt`. Keep the app's public URL private if you do not want others to access it; the app currently has no user authentication.
+
+## Data and limitations
+
+The app retrieves weekly OHLC data from Yahoo Finance using the community `yfinance` package. This is a convenient prototype data source, not a guaranteed or exchange-grade real-time feed. Market data may be delayed, rate-limited, or unavailable, and Yahoo Finance terms/provider behavior may change. The backend caches scans for 45 seconds; the browser auto-refreshes every 60 seconds. Use a licensed market-data provider for reliable real-time trading workflows. This app only screens the symbols entered; it does not place trades and is not investment advice.
+
+## Files
+
+- `app.py` — Flask API, weekly ADX calculation, and scan endpoint.
+- `templates/index.html` — responsive screener page.
+- `weekly_futures_screener.pine` — original TradingView indicator.
